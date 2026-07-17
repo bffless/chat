@@ -13,7 +13,34 @@ Proxy rules forward requests from your static site to backend APIs, eliminating 
 
 **Project defaults**: Apply to all aliases unless overridden
 
-**Alias overrides**: Specific aliases can have different proxy configurations
+**Alias overrides**: Specific aliases can have their own proxy rule sets assigned
+
+## Rule Sets
+
+Proxy rules are organized into **rule sets** — named, reusable groups of rules.
+
+An alias can have **multiple rule sets** attached. When multiple rule sets are assigned, their rules are merged in priority order (first set wins if two sets define the same path+method).
+
+This allows logical grouping, e.g.:
+- `api-proxy` — routes to your backend API
+- `pipelines` — pipeline-based handlers for chat, forms, etc.
+- `auth-proxy` — cookie-to-bearer token transformation
+
+### Assigning Rule Sets to Aliases
+
+Use `update_alias` with `proxyRuleSetIds` (array) to attach one or more rule sets:
+
+```
+update_alias(
+  repository: "owner/repo",
+  alias: "production",
+  proxyRuleSetIds: ["rule-set-id-1", "rule-set-id-2"]
+)
+```
+
+The legacy `proxyRuleSetId` (singular) still works for backwards compatibility but only supports one rule set.
+
+**Important**: After creating proxy rules, you must assign the rule set(s) to an alias for rules to take effect. Rules won't be active until linked to an alias.
 
 ## Rule Structure
 
@@ -64,6 +91,32 @@ With strip prefix OFF:
 
 **Microservices**: Different prefixes route to different services
 
+## Authoring Handler Code (function_handler)
+
+Proxy rule sets can include pipeline rules that carry a `function_handler` (custom JavaScript for transformation/logic). When you create or update such a rule through the MCP, the `code` string inside `function_handler.config` is stored **verbatim** and displayed verbatim in the admin UI — the UI does not reformat it.
+
+**Always emit multi-line, indented source — never a minified one-liner.**
+
+- Use real newlines (`\n` in the JSON payload) between statements.
+- Indent with 2 spaces, one statement per line — don't chain statements with semicolons onto one line.
+- Applies to any non-trivial `function_handler` body. A true one-liner like `function handler() { return {}; }` is fine; everything else should be expanded.
+
+Bad (do not submit code like this):
+
+```json
+{ "code": "function handler({ request }) { var h = request.headers || {}; var ip = (h['x-forwarded-for']||'').split(',')[0].trim() || 'unknown'; return { ip: ip }; }" }
+```
+
+Good:
+
+```json
+{
+  "code": "function handler({ request }) {\n  var headers = (request && request.headers) || {};\n  var xff = headers['x-forwarded-for'] || '';\n\n  var firstIp = '';\n  if (typeof xff === 'string' && xff.length > 0) {\n    var parts = xff.split(',');\n    firstIp = parts[0] ? parts[0].trim() : '';\n  }\n\n  return {\n    ip: firstIp || 'unknown',\n  };\n}\n"
+}
+```
+
+The user opens these rules in the admin UI to review and edit them later — a wall-of-text `code` field forces them to manually reformat before they can read it. See the **pipelines** skill ("Authoring Handler Code via MCP") for the full handler authoring guidance and sandbox constraints.
+
 ## Security Notes
 
 - All proxy targets must use HTTPS
@@ -75,9 +128,9 @@ With strip prefix OFF:
 
 **Requests not proxying?**
 - Check path pattern matches request URL exactly
-- Verify alias isn't overriding project defaults
+- Verify rule set is assigned to the alias via `update_alias`
 - Confirm target URL is HTTPS and reachable
 
 **Getting CORS errors still?**
-- Ensure the proxy rule is active on the alias being accessed
+- Ensure the proxy rule set is assigned to the alias being accessed
 - Check browser DevTools for actual request URL (may not be hitting proxy)
