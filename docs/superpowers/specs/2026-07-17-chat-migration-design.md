@@ -1,7 +1,8 @@
 # Chat migration: demo-chat → bffless/chat on chat.bffless.dev
 
 **Date:** 2026-07-17
-**Status:** approved, not yet implemented
+**Status:** implemented and verified. `chat.bffless.dev` serves; `GET /api/chat` returns;
+`POST /api/chat` streams with skills loading; the landing site's `/api/chat` is cut over.
 
 Move the chat demo out of `bffless/demo-chat` into a new repo named `chat`, serve it at
 `chat.bffless.dev`, and convert its pipelines from live database state into rules as code.
@@ -28,8 +29,13 @@ instance (`admin.docs.bffless.app`) holds one rule set, `chat_chat_pipelines`
 
 Facts that shaped the design:
 
-- **No project secrets** (`list_secrets` → empty). The Anthropic key is instance-level, so
-  there is nothing secret to migrate.
+- **Credentials live in project settings, not the secrets table.** `list_secrets` returns
+  empty, which misled the first draft of this spec into claiming there was nothing to
+  migrate. In fact `get_project` shows an encrypted `aiProviders` (Anthropic, `isDefault`)
+  and `settings.aiPlugins` (`email-contact` enabled). Both are **project-scoped and
+  encrypted**, so neither can be read back or copied between instances: the Anthropic key
+  must be re-set on the new project via `POST /api/projects/:id/ai`, and the plugin
+  re-enabled via `POST /api/projects/:id/ai-plugins/email-contact`.
 - **Skills ship in the artifact.** `.bffless/skills/*/SKILL.md` is deployed alongside the
   site and versioned per deployment; `skills: {mode: all}` resolves against the deployed
   commit. Copying the repo carries the chatbot's knowledge. No separate migration.
