@@ -1,0 +1,88 @@
+name: Build & Deploy
+
+on:
+  push:
+    branches: ['main']
+  workflow_dispatch:
+
+concurrency:
+  group: chat-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-deploy:
+    name: Build & Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        # No version pinned: action-setup v4 reads packageManager from package.json,
+        # so CI and local can't drift onto a lockfile version the other can't read.
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build chat
+        run: pnpm build
+
+      - name: Sync proxy rules
+        uses: bffless/deploy-proxy-rules@v1
+        with:
+          path: .bffless/proxy-rules/chat-pipelines
+          api-url: ${{ vars.CHAT_ASSET_HOST_URL }}
+          api-key: ${{ secrets.CHAT_ASSET_HOST_KEY }}
+          project: bffless/chat
+          # Git is the source of truth for this set: a rule deleted here is deleted live.
+          # Prune only ever removes RULES, and only within the set being synced — pipeline
+          # schemas resolve by name and are never deleted, so record data is untouched.
+          prune: true
+          summary-title: Chat Proxy Rules
+
+      - name: Upload build to production
+        uses: bffless/upload-artifact@v1
+        with:
+          path: dist
+          api-url: ${{ vars.CHAT_ASSET_HOST_URL }}
+          api-key: ${{ secrets.CHAT_ASSET_HOST_KEY }}
+          # Stated explicitly rather than derived. upload-artifact falls back to the GitHub
+          # repo context while deploy-proxy-rules falls back to .bffless/config.json — two
+          # different fallbacks, so a repo rename can split the artifact from its rules.
+          repository: bffless/chat
+          alias: production
+          base-path: /dist
+          proxy-rule-set-names: chat-pipelines
+          description: 'Chat build from ${{ github.head_ref || github.ref_name }}@${{ github.sha }}'
+          summary-title: Chat Build
+
+      - name: Upload skills to production
+        # The chatbot's knowledge. Skills are served from the deployment (under /.bffless)
+        # and versioned per commit, so `skills: {mode: all}` resolves against whatever this
+        # step uploaded. Without it the chat answers with no BFFless knowledge at all.
+        uses: bffless/upload-artifact@v1
+        with:
+          path: .bffless
+          api-url: ${{ vars.CHAT_ASSET_HOST_URL }}
+          api-key: ${{ secrets.CHAT_ASSET_HOST_KEY }}
+          repository: bffless/chat
+          alias: production
+          # Re-asserted: this upload targets the same alias, and an omitted value could
+          # otherwise clear the attachment the build step just made.
+          proxy-rule-set-names: chat-pipelines
+          description: 'Skills for ${{ github.head_ref || github.ref_name }}@${{ github.sha }}'
+          summary-title: Chat Skills

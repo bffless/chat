@@ -1,0 +1,34 @@
+name: Cleanup PR Preview
+on:
+  pull_request:
+    types: [closed]
+permissions:
+  contents: read
+
+concurrency:
+  group: cleanup-preview-chat-${{ github.event.pull_request.number }}
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete preview alias and rule set
+        env:
+          URL: ${{ vars.CHAT_ASSET_HOST_URL }}
+          KEY: ${{ secrets.CHAT_ASSET_HOST_KEY }}
+          N: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          # 1. Alias first — a rule set 409s on delete while attached.
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "X-API-Key: $KEY" "$URL/api/repo/bffless/chat/aliases/chat-pr-$N")
+          echo "alias delete: HTTP $code"   # 204 deleted, 404 never existed — both fine
+          [ "$code" = "204" ] || [ "$code" = "404" ] || exit 1
+          # 2. Resolve project id once, then delete the per-PR rule set by name.
+          project_id=$(curl -sf -H "X-API-Key: $KEY" "$URL/api/projects/bffless/chat" | jq -r '.id')
+          if [ -z "$project_id" ] || [ "$project_id" = "null" ]; then echo "could not resolve project bffless/chat"; exit 1; fi
+          sets=$(curl -sf -H "X-API-Key: $KEY" "$URL/api/proxy-rule-sets/project/$project_id")
+          name="chat-pipelines-pr-$N"
+          set_id=$(echo "$sets" | jq -r --arg n "$name" '.ruleSets[] | select(.name==$n) | .id')
+          if [ -z "$set_id" ]; then echo "rule set $name not found — nothing to delete"; exit 0; fi
+          curl -sf -X DELETE -H "X-API-Key: $KEY" "$URL/api/proxy-rule-sets/$set_id" > /dev/null
+          echo "deleted rule set $name ($set_id)"

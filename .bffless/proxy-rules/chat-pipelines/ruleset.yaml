@@ -1,0 +1,4 @@
+name: chat-pipelines
+description: "Chat pipelines for chat.bffless.dev \u2014 AI chat and conversation\
+  \ fetch."
+environment: production

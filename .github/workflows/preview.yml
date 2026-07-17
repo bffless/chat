@@ -1,0 +1,83 @@
+name: Preview on BFFless
+
+# PR previews for the chat app. Each PR gets its own preview: a per-PR copy of the
+# authored rule set (chat-pipelines-pr-<N>) synced with a pr-<N> name suffix, and a
+# per-PR alias (chat-pr-<N>) that the set is attached to — mirroring what production
+# serves. cleanup-preview.yml tears them down when the PR closes.
+#
+# pull_request-only by design: github.event.pull_request.number is then always set, so
+# the PR number can be used inline and a manual run can never push its rules onto the
+# LIVE `chat-pipelines` set through a missing name suffix.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: preview-chat-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-preview:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build chat
+        run: pnpm build
+
+      - name: Sync PR preview proxy rules
+        uses: bffless/deploy-proxy-rules@v1
+        with:
+          path: .bffless/proxy-rules/chat-pipelines
+          api-url: ${{ vars.CHAT_ASSET_HOST_URL }}
+          api-key: ${{ secrets.CHAT_ASSET_HOST_KEY }}
+          project: bffless/chat
+          prune: true   # match production, so the preview reflects what merging will do
+          name-suffix: pr-${{ github.event.pull_request.number }}
+          summary-title: Chat Preview Proxy Rules
+          pr-comment: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Deploy preview build
+        uses: bffless/upload-artifact@v1
+        with:
+          path: dist
+          api-url: ${{ vars.CHAT_ASSET_HOST_URL }}
+          api-key: ${{ secrets.CHAT_ASSET_HOST_KEY }}
+          repository: bffless/chat
+          alias: chat-pr-${{ github.event.pull_request.number }}
+          base-path: /dist
+          proxy-rule-set-names: chat-pipelines-pr-${{ github.event.pull_request.number }}
+          description: 'Chat preview for PR #${{ github.event.pull_request.number }}'
+          summary-title: Chat Preview
+          pr-comment: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload preview skills
+        uses: bffless/upload-artifact@v1
+        with:
+          path: .bffless
+          api-url: ${{ vars.CHAT_ASSET_HOST_URL }}
+          api-key: ${{ secrets.CHAT_ASSET_HOST_KEY }}
+          repository: bffless/chat
+          alias: chat-pr-${{ github.event.pull_request.number }}
+          proxy-rule-set-names: chat-pipelines-pr-${{ github.event.pull_request.number }}
+          description: 'Skills for PR #${{ github.event.pull_request.number }}'
+          summary-title: Chat Preview Skills

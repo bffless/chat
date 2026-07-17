@@ -1,0 +1,27 @@
+targetUrl: ''
+order: 1
+timeout: 30000
+debugEnabled: false
+pipeline:
+  name: GET_CHAT
+  steps:
+  - id: step_1773507485045_xbq1vtu
+    name: form_validation
+    handler: form_handler
+    config:
+      fields:
+        conversationId:
+          type: string
+          required: false
+    isEnabled: true
+  - id: step_1773507499827_8xn0ld8
+    name: query_records
+    handler: data_query
+    config:
+      filters:
+        conversation_id:
+          op: eq
+          value: request.query.conversationId
+      schemaId: $schema:chat_messages
+    isEnabled: true
+  description: Get the chat conversation by id

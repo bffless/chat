@@ -1,0 +1,33 @@
+{
+  "name": "chat",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.33.0",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build && vite build --config vite.config.embed-script.ts",
+    "build:embed-script": "vite build --config vite.config.embed-script.ts",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@ai-sdk/react": "^3.0.118",
+    "ai": "^6.0.116",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.2.1",
+    "@tailwindcss/typography": "^0.5.19",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.27",
+    "postcss": "^8.5.8",
+    "tailwindcss": "^4.2.1",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7"
+  }
+}
